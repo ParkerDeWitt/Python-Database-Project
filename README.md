@@ -1,5 +1,5 @@
 # Simple Key-Value Store
-
+THIS README CREATED WITH CLAUDE SONNET 5- claude was given access to repo, analyzed it and created this readme for it.
 A persistent, append-only key-value store with a Redis-style command-line
 interface, built for the "Build Your Own Database" project
 (https://build-your-own.org/database/).
