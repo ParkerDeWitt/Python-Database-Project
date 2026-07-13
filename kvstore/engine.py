@@ -217,7 +217,7 @@ class Engine:
 
         if op == "MGET":
             self._require(len(args) >= 1, "MGET requires at least one <key>")
-            return formatting.multi(self._get_string(k, now) for k in args)
+            return formatting.fixed_multiline(self._get_string(k, now) for k in args)
 
         if op == "EXPIRE":
             self._require(len(args) == 2, "EXPIRE requires <key> <seconds>")
@@ -248,15 +248,15 @@ class Engine:
         if op == "RANGE":
             self._require(len(args) == 2, "RANGE requires <start> <end>")
             start, end = args
-            results = []
+            matching_keys = []
             for key in sorted(self.index.keys()):
                 if not (start <= key <= end):
                     continue
                 entry = self.index.get(key)
                 if entry is None or entry.is_expired(now) or entry.type != "string":
                     continue
-                results.append((key, entry.value))
-            return formatting.pairs(results)
+                matching_keys.append(key)
+            return formatting.multiline(matching_keys)
 
         if op == "HSET":
             self._require(len(args) == 3, "HSET requires <hash> <field> <value>")
@@ -271,15 +271,16 @@ class Engine:
             hash_key, field = args
             entry = self._typed_entry(hash_key, "hash", now)
             if entry is None:
-                return formatting.nil()
+                return formatting.single(None)
             return formatting.single(entry.value.get(field))
 
         if op == "HGETALL":
             self._require(len(args) == 1, "HGETALL requires <hash>")
             entry = self._typed_entry(args[0], "hash", now)
             if entry is None:
-                return formatting.EMPTY
-            return formatting.pairs(list(entry.value.items()))
+                return formatting.multiline([])
+            pairs = (f"{field} {value}" for field, value in entry.value.items())
+            return formatting.multiline(pairs)
 
         if op in ("LPUSH", "RPUSH"):
             self._require(len(args) >= 2, f"{op} requires <key> <value> [value ...]")
@@ -296,9 +297,9 @@ class Engine:
             stop = self._to_int(stop_raw, "LRANGE stop must be an integer")
             entry = self._typed_entry(key, "list", now)
             if entry is None:
-                return formatting.EMPTY
+                return formatting.multiline([])
             values = _slice_inclusive(entry.value, start, stop)
-            return formatting.multi(values) if values else formatting.EMPTY
+            return formatting.multiline(values)
 
         if op in ("INCR", "DECR"):
             self._require(len(args) == 1, f"{op} requires <key>")

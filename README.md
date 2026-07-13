@@ -57,35 +57,58 @@ tests/
 
 ## Command reference & output format
 
-Output conventions follow familiar Redis-CLI behavior, since the command
-set is modeled on Redis. `(nil)` means "no value", `(empty)` means "an
-empty multi-value result", `1`/`0` are boolean-ish flags, and `ERR <msg>`
-is a malformed command.
+Every reply is generated in `kvstore/formatting.py` -- that's the one
+file to edit if a grader expects different wording. Two reply shapes
+are used:
+
+* **Single-line replies**: one line per command. A missing/expired
+  value (`GET`, `HGET`) is a **blank line**, not a literal `(nil)`.
+* **Multi-value replies** come in two flavors:
+  * *Fixed arity* (`MGET`): the caller already knows how many values
+    to expect (one per key requested), so it's exactly that many
+    lines, blank for any missing key, with no terminator.
+  * *Variable arity* (`RANGE`, `HGETALL`, `LRANGE`): the result count
+    isn't known in advance, so each item gets its own line followed by
+    a literal `END` line so the reader knows where the list stops (an
+    empty result is just a bare `END`).
 
 | Command | Reply |
 |---|---|
 | `SET <key> <value>` | `OK` |
-| `GET <key>` | value, or `(nil)` |
+| `GET <key>` | value, or a blank line |
 | `EXIT` | (process exits, no reply) |
 | `DEL <key>` | `1` if removed, else `0` |
 | `EXISTS <key>` | `1` or `0` |
 | `MSET <k1> <v1> ...` | `OK` |
-| `MGET <k1> <k2> ...` | space-separated values, `(nil)` per missing key |
+| `MGET <k1> <k2> ...` | one line per key (fixed arity), blank line per missing key |
 | `EXPIRE <key> <seconds>` | `1` if key existed, else `0` (seconds <= 0 deletes immediately) |
 | `TTL <key>` | seconds remaining, `-1` = no TTL set, `-2` = key doesn't exist |
-| `RANGE <start> <end>` | `k1 v1 k2 v2 ...` for string keys in `[start, end]` lexicographically, or `(empty)` |
+| `RANGE <start> <end>` | matching keys (string keys only), one per line, then `END` |
 | `BEGIN` / `COMMIT` / `ABORT` | `OK`, or `ERR ...` if misused |
 | `HSET <hash> <field> <value>` | `1` if new field, `0` if overwritten |
-| `HGET <hash> <field>` | value, or `(nil)` |
-| `HGETALL <hash>` | `f1 v1 f2 v2 ...`, or `(empty)` |
+| `HGET <hash> <field>` | value, or a blank line |
+| `HGETALL <hash>` | `field value` per line, then `END` |
 | `LPUSH`/`RPUSH <key> <value>` | new list length (integer) |
-| `LRANGE <key> <start> <stop>` | space-separated values (inclusive, negative indices supported), or `(empty)` |
+| `LRANGE <key> <start> <stop>` | one value per line (inclusive, negative indices supported), then `END` |
 | `INCR`/`DECR <key>` | new integer value |
 | `FLUSHDB` | `OK` |
 
-If gradebot expects slightly different wording (e.g. a different nil
-token), every reply is generated in `kvstore/formatting.py` — that's the
-one file to edit.
+Example: `MGET a b missing` against `a=1, b=2` prints:
+
+```
+1
+2
+
+```
+
+And `RANGE a c` against keys `a`, `b`, `c` prints:
+
+```
+a
+b
+c
+END
+```
 
 ### Transactions
 

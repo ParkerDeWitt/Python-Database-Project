@@ -12,7 +12,7 @@ def test_set_get(tmp_path):
     e = make_engine(tmp_path)
     assert e.execute("SET foo bar") == "OK"
     assert e.execute("GET foo") == "bar"
-    assert e.execute("GET missing") == "(nil)"
+    assert e.execute("GET missing") == ""
 
 
 def test_last_write_wins(tmp_path):
@@ -34,7 +34,7 @@ def test_del_and_exists(tmp_path):
 def test_mset_mget(tmp_path):
     e = make_engine(tmp_path)
     assert e.execute("MSET a 1 b 2 c 3") == "OK"
-    assert e.execute("MGET a b c missing") == "1 2 3 (nil)"
+    assert e.execute("MGET a b c missing") == "1\n2\n3\n"
 
 
 def test_expire_and_ttl(tmp_path):
@@ -61,7 +61,7 @@ def test_ttl_expiry_hides_value(tmp_path):
     # Manually force expiry without sleeping the test suite.
     entry = e.index.get("foo")
     entry.expire_at = time.time() - 1
-    assert e.execute("GET foo") == "(nil)"
+    assert e.execute("GET foo") == ""
     assert e.execute("EXISTS foo") == "0"
     assert e.execute("TTL foo") == "-2"
 
@@ -69,8 +69,8 @@ def test_ttl_expiry_hides_value(tmp_path):
 def test_range_query(tmp_path):
     e = make_engine(tmp_path)
     e.execute("MSET apple 1 banana 2 cherry 3 date 4")
-    assert e.execute("RANGE banana date") == "banana 2 cherry 3 date 4"
-    assert e.execute("RANGE zzz zzzz") == "(empty)"
+    assert e.execute("RANGE banana date") == "banana\ncherry\ndate\nEND"
+    assert e.execute("RANGE zzz zzzz") == "END"
 
 
 def test_hash_commands(tmp_path):
@@ -78,12 +78,13 @@ def test_hash_commands(tmp_path):
     assert e.execute("HSET h f1 v1") == "1"  # new field
     assert e.execute("HSET h f1 v2") == "0"  # overwrite
     assert e.execute("HGET h f1") == "v2"
-    assert e.execute("HGET h missing") == "(nil)"
+    assert e.execute("HGET h missing") == ""
     e.execute("HSET h f2 v3")
     reply = e.execute("HGETALL h")
-    pairs = reply.split()
-    as_dict_pairs = sorted(zip(pairs[0::2], pairs[1::2]))
-    assert as_dict_pairs == [("f1", "v2"), ("f2", "v3")]
+    lines = reply.split("\n")
+    assert lines[-1] == "END"
+    pairs = sorted(tuple(line.split()) for line in lines[:-1])
+    assert pairs == [("f1", "v2"), ("f2", "v3")]
 
 
 def test_list_commands(tmp_path):
@@ -91,9 +92,9 @@ def test_list_commands(tmp_path):
     assert e.execute("RPUSH mylist a") == "1"
     assert e.execute("RPUSH mylist b") == "2"
     assert e.execute("LPUSH mylist z") == "3"
-    assert e.execute("LRANGE mylist 0 -1") == "z a b"
-    assert e.execute("LRANGE mylist 0 0") == "z"
-    assert e.execute("LRANGE nokey 0 -1") == "(empty)"
+    assert e.execute("LRANGE mylist 0 -1") == "z\na\nb\nEND"
+    assert e.execute("LRANGE mylist 0 0") == "z\nEND"
+    assert e.execute("LRANGE nokey 0 -1") == "END"
 
 
 def test_incr_decr(tmp_path):
@@ -165,7 +166,7 @@ def test_persistence_across_restart(tmp_path):
     e2 = Engine(Storage(db_path))
     assert e2.execute("GET foo") == "bar"
     assert e2.execute("HGET h f") == "v"
-    assert e2.execute("LRANGE mylist 0 -1") == "a b"
+    assert e2.execute("LRANGE mylist 0 -1") == "a\nb\nEND"
     assert e2.execute("GET a") == "1"
     assert e2.execute("EXISTS b") == "0"
 

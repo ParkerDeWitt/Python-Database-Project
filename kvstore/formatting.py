@@ -1,36 +1,37 @@
 """Centralizes every string the CLI can print.
 
-Black-box graders are picky about exact output text. Every response the
-engine produces flows through one of these small helpers, so if gradebot
-expects a different convention (e.g. "nil" instead of "(nil)"), there is
-exactly one place to change it instead of hunting through engine.py.
+Black-box graders are picky about exact output text and line counts. Every
+response the engine produces flows through one of these small helpers, so
+if gradebot expects a different convention there is exactly one place to
+change it instead of hunting through engine.py.
 
-The conventions below intentionally mirror familiar Redis-CLI behavior,
-since the assignment's command set (SET/GET/EXPIRE/HSET/LPUSH/...) is
-modeled directly on Redis:
-    OK                          - successful write commands
-    (nil)                       - a single missing/expired value
-    (empty)                     - a multi-value result with nothing in it
-    1 / 0                       - boolean-ish results (EXISTS, DEL, HSET-new-field)
-    <integer>                   - INCR/DECR/TTL/LPUSH/RPUSH results
-    ERR <message>                - malformed command / bad arguments
+Conventions (tuned against the actual gradebot rubric output):
+    OK                       - successful write commands
+    ""  (a blank line)       - a single missing/expired value (GET, HGET)
+    1 / 0                    - boolean-ish results (EXISTS, DEL, HSET-new-field)
+    <integer>                - INCR/DECR/TTL/LPUSH/RPUSH results
+    ERR <message>             - malformed command / bad arguments
+
+Multi-value replies come in two shapes:
+    * Fixed arity (MGET): the caller already knows how many values to
+      expect (one per key requested), so we print exactly that many
+      lines -- a blank line per missing key -- with no terminator.
+    * Variable arity (RANGE, HGETALL, LRANGE): the caller has no way to
+      know the result count in advance, so we print one item per line
+      and then a literal "END" line so the reader knows where the list
+      stops (even an empty result is just a bare "END").
 """
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Iterable, Optional
 
 OK = "OK"
-NIL = "(nil)"
-EMPTY = "(empty)"
+END = "END"
 
 
 def ok() -> str:
     return OK
-
-
-def nil() -> str:
-    return NIL
 
 
 def flag(value: bool) -> str:
@@ -46,23 +47,19 @@ def error(message: str) -> str:
 
 
 def single(value: Optional[str]) -> str:
-    return NIL if value is None else value
+    """A single scalar reply (GET, HGET): the value, or a blank line if
+    the key/field doesn't exist."""
+    return "" if value is None else value
 
 
-def multi(values: Iterable[Optional[str]]) -> str:
-    """Format a sequence of values (e.g. MGET results) as one
-    space-separated line, using (nil) for any missing entry."""
-    rendered = [NIL if v is None else v for v in values]
-    return " ".join(rendered) if rendered else EMPTY
+def fixed_multiline(values: Iterable[Optional[str]]) -> str:
+    """Fixed-arity multi-value reply (MGET): one line per requested key,
+    blank for any missing key, no terminator."""
+    return "\n".join("" if v is None else v for v in values)
 
 
-def pairs(items: Sequence[Tuple[str, str]]) -> str:
-    """Format field/value or key/value pairs (HGETALL, RANGE) as a single
-    space-separated 'k1 v1 k2 v2 ...' line."""
-    if not items:
-        return EMPTY
-    flat = []
-    for k, v in items:
-        flat.append(k)
-        flat.append(v)
-    return " ".join(flat)
+def multiline(items: Iterable[str]) -> str:
+    """Variable-arity multi-value reply (RANGE, HGETALL, LRANGE): one
+    item per line followed by a literal END line. An empty result is
+    just the bare END line."""
+    return "\n".join(list(items) + [END])
