@@ -20,7 +20,26 @@ from kvstore.engine import Engine
 from kvstore.storage import DEFAULT_DB_PATH, Storage
 
 
+def _use_line_buffering() -> None:
+    """Force line buffering on stdin/stdout regardless of whether this
+    process's streams are attached to a terminal or a pipe. When STDIN
+    and STDOUT are redirected (exactly the case under a black-box tester
+    piping commands in and reading replies out), Python may otherwise
+    switch to full block buffering, which can delay when input becomes
+    visible to us or when output becomes visible to the reader. Forcing
+    line buffering here makes behavior identical whether this program is
+    run interactively or driven by an external harness.
+    """
+    try:
+        sys.stdin.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+
+
 def main(argv=None) -> int:
+    _use_line_buffering()
+
     parser = argparse.ArgumentParser(description="A simple persistent key-value store.")
     parser.add_argument(
         "--db",
@@ -38,7 +57,7 @@ def main(argv=None) -> int:
             if not line.strip():
                 continue
             reply = engine.execute(line)
-            if reply is None:  # EXIT
+            if reply is None:
                 break
             print(reply, flush=True)
     finally:
